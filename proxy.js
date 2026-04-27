@@ -3,7 +3,7 @@ import { getIronSession } from 'iron-session';
 
 import { sessionOptions } from './lib/session';
 
-export async function middleware(req) {
+export default async function proxy(req) {
     const res = NextResponse.next();
     const session = await getIronSession(req.cookies, sessionOptions);
     const { pathname } = req.nextUrl;
