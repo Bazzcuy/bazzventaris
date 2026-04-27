@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import StatusBadge from '@/components/StatusBadge';
+import { ChevronLeft, ChevronRight, Square, XCircle, CheckCircle2, CalendarDays, Check } from 'lucide-react';
 
 function AvailabilityCalendar({ bookings }) {
     const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -42,17 +43,17 @@ function AvailabilityCalendar({ bookings }) {
     return (
         <div className="calendar">
             <div className="calendar-header">
-                <button onClick={prevMonth}>◀</button>
+                <button onClick={prevMonth} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}><ChevronLeft size={20} /></button>
                 <h4>{monthNames[month]} {year}</h4>
-                <button onClick={nextMonth}>▶</button>
+                <button onClick={nextMonth} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}><ChevronRight size={20} /></button>
             </div>
             <div className="calendar-grid">
                 {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map(d => <div key={d} className="day-header">{d}</div>)}
                 {days}
             </div>
-            <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.5rem' }}>
-                <span style={{ color: '#ffd54f' }}>■</span> Sudah dibooking &nbsp;
-                <span style={{ color: '#4A86E8' }}>□</span> Hari ini
+            <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)', marginTop: '0.5rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Square fill="#ffd54f" color="#ffd54f" size={14} /> Sudah dibooking</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Square fill="transparent" color="#4A86E8" size={14} /> Hari ini</span>
             </p>
         </div>
     );
@@ -82,7 +83,7 @@ export default function DetailPage() {
             <Navbar />
             <div className="page-content">
                 <div className="empty-state">
-                    <div style={{ fontSize: '3rem' }}>❌</div>
+                    <div style={{ color: '#ff6b6b', marginBottom: '1rem' }}><XCircle size={64} /></div>
                     <p>Barang tidak ditemukan</p>
                     <Link href="/barang" className="btn btn-back" style={{ marginTop: '1rem' }}>← Kembali</Link>
                 </div>
@@ -114,8 +115,8 @@ export default function DetailPage() {
                             )}
 
                             {item.status === 'tersedia' && (
-                                <Link href={`/form/${item.id}`} className="btn btn-success" style={{ marginTop: '1.5rem' }}>
-                                    ✅ Ajukan Peminjaman
+                                <Link href={`/form/${item.id}`} className="btn btn-success" style={{ marginTop: '1.5rem', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                                    <CheckCircle2 size={18} /> Ajukan Peminjaman
                                 </Link>
                             )}
 
@@ -124,8 +125,8 @@ export default function DetailPage() {
                                 <AvailabilityCalendar bookings={item.bookings} />
                             )}
                             {item.bookings && item.bookings.length === 0 && (
-                                <div style={{ marginTop: '1.5rem', fontSize: '0.85rem', color: 'rgba(255,255,255,0.4)' }}>
-                                    📅 Belum ada jadwal peminjaman
+                                <div style={{ marginTop: '1.5rem', fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <CalendarDays size={16} /> Belum ada jadwal peminjaman
                                 </div>
                             )}
                         </div>

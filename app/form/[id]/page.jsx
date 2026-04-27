@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
+import { ClipboardList, CheckCircle2 } from 'lucide-react';
+
 
 export default function FormPage() {
     const { id } = useParams();
@@ -69,7 +71,7 @@ export default function FormPage() {
                 <Link href={`/detail/${id}`} className="btn btn-back animate-in" style={{ marginBottom: '1.5rem' }}>← Kembali</Link>
 
                 <div className="content-card animate-in">
-                    <h2 style={{ fontWeight: 800, marginBottom: '0.5rem' }}>📋 Form Peminjaman</h2>
+                    <h2 style={{ fontWeight: 800, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}><ClipboardList size={28} /> Form Peminjaman</h2>
                     <p style={{ color: 'rgba(255,255,255,0.5)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
                         Barang: <strong>{item?.nama}</strong> ({item?.kode_barang})
                     </p>
@@ -77,7 +79,7 @@ export default function FormPage() {
                     {error && <div className="alert alert-danger">{error}</div>}
 
                     <form onSubmit={handleSubmit}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 1.2rem' }}>
+                        <div className="form-grid">
                             <div className="form-group">
                                 <label>NIM *</label>
                                 <input type="text" value={form.nim} onChange={e => updateForm('nim', e.target.value)} required placeholder="Contoh: 2201010001" />
@@ -130,8 +132,8 @@ export default function FormPage() {
                             </div>
                         </div>
 
-                        <button type="submit" className="btn btn-success" style={{ width: '100%', marginTop: '1rem' }} disabled={submitting}>
-                            {submitting ? 'Mengirim...' : '✅ Ajukan Peminjaman'}
+                        <button type="submit" className="btn btn-success" style={{ width: '100%', marginTop: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }} disabled={submitting}>
+                            {submitting ? 'Mengirim...' : <><CheckCircle2 size={18} /> Ajukan Peminjaman</>}
                         </button>
                     </form>
                 </div>
