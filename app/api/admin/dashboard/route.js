@@ -1,21 +1,48 @@
-import pool from '@/lib/db';
+import supabase from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
-    const session = await getSession();
-    if (!session.adminId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    try {
+        const session = await getSession();
+        if (!session.adminId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const [[{ total_users }]] = await pool.query('SELECT COUNT(*) AS total_users FROM usser');
-    const [[{ available_items }]] = await pool.query("SELECT COUNT(*) AS available_items FROM barang WHERE status = 'tersedia'");
-    const [[{ active_loans }]] = await pool.query("SELECT COUNT(*) AS active_loans FROM peminjaman WHERE status IN ('disetujui','dipinjam')");
-    const [[{ pending_loans }]] = await pool.query("SELECT COUNT(*) AS pending_loans FROM peminjaman WHERE status = 'pending'");
+        const { count: total_users } = await supabase.from('usser').select('*', { count: 'exact', head: true });
+        const { count: available_items } = await supabase.from('barang').select('*', { count: 'exact', head: true }).eq('status', 'tersedia');
+        const { count: active_loans } = await supabase.from('peminjaman').select('*', { count: 'exact', head: true }).in('status', ['disetujui', 'dipinjam']);
+        const { count: pending_loans } = await supabase.from('peminjaman').select('*', { count: 'exact', head: true }).eq('status', 'pending');
 
-    const [recent_users] = await pool.query('SELECT id, nama, email, created_at FROM usser ORDER BY created_at DESC LIMIT 5');
-    const [recent_loans] = await pool.query(
-        `SELECT p.id, p.status, p.tanggal_pinjam, u.nama AS nama_user, b.nama AS nama_barang 
-     FROM peminjaman p JOIN usser u ON p.user_id = u.id JOIN barang b ON p.barang_id = b.id 
-     ORDER BY p.created_at DESC LIMIT 5`
-    );
+        const { data: recent_users } = await supabase.from('usser').select('id, nama, email, created_at').order('created_at', { ascending: false }).limit(5);
+        
+        const { data: recent_loans_raw } = await supabase
+            .from('peminjaman')
+            .select(`
+                id, status, tanggal_pinjam, created_at,
+                usser:user_id (nama),
+                barang:barang_id (nama)
+            `)
+            .order('created_at', { ascending: false })
+            .limit(5);
 
-    return Response.json({ total_users, available_items, active_loans, pending_loans, recent_users, recent_loans });
+        const recent_loans = recent_loans_raw?.map(r => ({
+            id: r.id,
+            status: r.status,
+            tanggal_pinjam: r.tanggal_pinjam,
+            nama_user: r.usser?.nama,
+            nama_barang: r.barang?.nama
+        }));
+
+        return Response.json({ 
+            total_users: total_users || 0, 
+            available_items: available_items || 0, 
+            active_loans: active_loans || 0, 
+            pending_loans: pending_loans || 0, 
+            recent_users: recent_users || [], 
+            recent_loans: recent_loans || [] 
+        });
+    } catch (error) {
+        console.error('Dashboard API Error:', error);
+        return Response.json({ error: 'Gagal mengambil data dashboard' }, { status: 500 });
+    }
 }

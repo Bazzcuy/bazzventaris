@@ -2,6 +2,8 @@ import supabase from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request) {
     try {
         const { action, email, password } = await request.json();

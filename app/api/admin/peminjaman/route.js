@@ -1,59 +1,108 @@
-import pool from '@/lib/db';
+import supabase from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request) {
-    const session = await getSession();
-    if (!session.adminId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    try {
+        const session = await getSession();
+        if (!session.adminId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status');
+        const { searchParams } = new URL(request.url);
+        const status = searchParams.get('status');
 
-    let query = `SELECT p.*, u.nama AS nama_user, u.email AS email_user, b.nama AS nama_barang, b.kode_barang, b.gambar 
-               FROM peminjaman p JOIN usser u ON p.user_id = u.id JOIN barang b ON p.barang_id = b.id`;
-    const params = [];
+        let query = supabase
+            .from('peminjaman')
+            .select(`
+                *,
+                usser:user_id (nama, email),
+                barang:barang_id (nama, kode_barang, gambar)
+            `);
 
-    if (status) { query += ' WHERE p.status = ?'; params.push(status); }
-    query += ' ORDER BY p.created_at DESC';
+        if (status) query = query.eq('status', status);
+        query = query.order('created_at', { ascending: false });
 
-    const [rows] = await pool.query(query, params);
-    return Response.json(rows);
+        const { data: rows, error } = await query;
+        if (error) throw error;
+
+        // Flatten data to match old MySQL structure
+        const flattened = rows.map(r => ({
+            ...r,
+            nama_user: r.usser?.nama,
+            email_user: r.usser?.email,
+            nama_barang: r.barang?.nama,
+            kode_barang: r.barang?.kode_barang,
+            gambar: r.barang?.gambar
+        }));
+
+        return Response.json(flattened);
+    } catch (error) {
+        console.error('Admin Peminjaman GET Error:', error);
+        return Response.json({ error: 'Gagal mengambil data' }, { status: 500 });
+    }
 }
 
 export async function POST(request) {
-    const session = await getSession();
-    if (!session.adminId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    try {
+        const session = await getSession();
+        if (!session.adminId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { action, id, catatan } = await request.json();
+        const { action, id, catatan } = await request.json();
 
-    if (action === 'cancel') {
-        const [cek] = await pool.query("SELECT id FROM peminjaman WHERE id = ? AND status = 'reserved'", [id]);
-        if (cek.length === 0) return Response.json({ error: 'Hanya pesanan berstatus reserved yang dapat dibatalkan admin!' }, { status: 400 });
+        if (action === 'cancel') {
+            const { data: loan, error: fetchError } = await supabase
+                .from('peminjaman')
+                .select('*, barang:barang_id(nama)')
+                .eq('id', id)
+                .eq('status', 'reserved')
+                .single();
 
-        await pool.query("UPDATE peminjaman SET status = 'dibatalkan_otomatis', catatan_admin = ? WHERE id = ?", [catatan || 'Dibatalkan oleh admin secara manual', id]);
-        const [[loan]] = await pool.query('SELECT user_id, barang_id FROM peminjaman WHERE id = ?', [id]);
-        const [[barang]] = await pool.query('SELECT nama FROM barang WHERE id = ?', [loan.barang_id]);
-        await pool.query(
-            "INSERT INTO notifikasi (user_id, judul, pesan, tipe) VALUES (?, 'Reservasi Dibatalkan Admin', ?, 'ditolak')",
-            [loan.user_id, `Reservasi ${barang.nama} dibatalkan oleh admin. Alasan: ${catatan || 'Tidak ada keterangan'}`]
-        );
-        return Response.json({ success: true });
+            if (fetchError || !loan) return Response.json({ error: 'Hanya pesanan berstatus reserved yang dapat dibatalkan admin!' }, { status: 400 });
+
+            await supabase
+                .from('peminjaman')
+                .update({ status: 'dibatalkan_otomatis', catatan_admin: catatan || 'Dibatalkan oleh admin secara manual' })
+                .eq('id', id);
+
+            await supabase.from('notifikasi').insert([{
+                user_id: loan.user_id,
+                judul: 'Reservasi Dibatalkan Admin',
+                pesan: `Reservasi ${loan.barang?.nama} dibatalkan oleh admin. Alasan: ${catatan || 'Tidak ada keterangan'}`,
+                tipe: 'ditolak'
+            }]);
+
+            return Response.json({ success: true });
+        }
+
+        if (action === 'return') {
+            const { data: loan, error: fetchError } = await supabase
+                .from('peminjaman')
+                .select('*, barang:barang_id(nama)')
+                .eq('id', id)
+                .eq('status', 'dipinjam')
+                .single();
+
+            if (fetchError || !loan) return Response.json({ error: 'Barang yang dapat dikembalikan manual oleh admin hanya yang berstatus dipinjam!' }, { status: 400 });
+
+            const now = new Date().toISOString().split('T')[0];
+            await supabase
+                .from('peminjaman')
+                .update({ status: 'dikembalikan', tanggal_dikembalikan: now })
+                .eq('id', id);
+
+            await supabase.from('notifikasi').insert([{
+                user_id: loan.user_id,
+                judul: 'Barang Dikembalikan',
+                pesan: `${loan.barang?.nama} telah berhasil dikembalikan. Terima kasih!`,
+                tipe: 'sukses'
+            }]);
+
+            return Response.json({ success: true });
+        }
+
+        return Response.json({ error: 'Invalid action' }, { status: 400 });
+    } catch (error) {
+        console.error('Admin Peminjaman POST Error:', error);
+        return Response.json({ error: 'Terjadi kesalahan sistem' }, { status: 500 });
     }
-
-    if (action === 'return') {
-        const [cek] = await pool.query("SELECT id FROM peminjaman WHERE id = ? AND status = 'dipinjam'", [id]);
-        if (cek.length === 0) return Response.json({ error: 'Barang yang dapat dikembalikan manual oleh admin hanya yang berstatus dipinjam!' }, { status: 400 });
-
-        const now = new Date().toISOString().split('T')[0];
-        await pool.query("UPDATE peminjaman SET status = 'dikembalikan', tanggal_dikembalikan = ? WHERE id = ?", [now, id]);
-        const [[loan]] = await pool.query('SELECT user_id, barang_id FROM peminjaman WHERE id = ?', [id]);
-        // Update barang ke tersedia tidak relevan secara radikal (sama spt aturan approval)
-        const [[barang]] = await pool.query('SELECT nama FROM barang WHERE id = ?', [loan.barang_id]);
-        await pool.query(
-            "INSERT INTO notifikasi (user_id, judul, pesan, tipe) VALUES (?, 'Barang Dikembalikan', ?, 'sukses')",
-            [loan.user_id, `${barang.nama} telah berhasil dikembalikan. Terima kasih!`]
-        );
-        return Response.json({ success: true });
-    }
-
-    return Response.json({ error: 'Invalid action' }, { status: 400 });
 }

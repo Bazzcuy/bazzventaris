@@ -1,45 +1,50 @@
-import pool from '@/lib/db';
+import supabase from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
 
-export async function GET() {
-    const session = await getSession();
-    if (!session.userId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+export const dynamic = 'force-dynamic';
 
-    const [rows] = await pool.query('SELECT id, nama, email, no_hp, created_at FROM usser WHERE id = ?', [session.userId]);
-    if (rows.length === 0) return Response.json({ error: 'User tidak ditemukan' }, { status: 404 });
-    return Response.json(rows[0]);
+export async function GET() {
+    try {
+        const session = await getSession();
+        if (!session.userId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+        const { data: rows, error } = await supabase.from('usser').select('id, nama, email, no_hp, created_at').eq('id', session.userId);
+        if (error || !rows || rows.length === 0) return Response.json({ error: 'User tidak ditemukan' }, { status: 404 });
+        return Response.json(rows[0]);
+    } catch (error) {
+        return Response.json({ error: 'Gagal mengambil profil' }, { status: 500 });
+    }
 }
 
 export async function POST(request) {
-    const session = await getSession();
-    if (!session.userId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    try {
+        const session = await getSession();
+        if (!session.userId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { nama, email, no_hp, password_baru } = await request.json();
+        const { nama, email, no_hp, password_baru } = await request.json();
 
-    // Validasi pencegahan Duplikasi/Pembajakan Akun (Account Hijacking)
-    const [existingEmail] = await pool.query('SELECT id FROM usser WHERE email = ? AND id != ?', [email, session.userId]);
-    if (existingEmail.length > 0) {
-        return Response.json({ error: 'Email sudah digunakan oleh akun lain!' }, { status: 400 });
+        const { data: existingEmail } = await supabase.from('usser').select('id').eq('email', email).neq('id', session.userId);
+        if (existingEmail && existingEmail.length > 0) {
+            return Response.json({ error: 'Email sudah digunakan oleh akun lain!' }, { status: 400 });
+        }
+
+        const updateData = { nama, email, no_hp };
+
+        if (password_baru && password_baru.length >= 6) {
+            updateData.password = await bcrypt.hash(password_baru, 10);
+        }
+
+        const { error } = await supabase.from('usser').update(updateData).eq('id', session.userId);
+        if (error) throw error;
+
+        // Update session name
+        session.userName = nama;
+        await session.save();
+
+        return Response.json({ success: true });
+    } catch (error) {
+        console.error('Profil API Error:', error);
+        return Response.json({ error: 'Gagal memperbarui profil' }, { status: 500 });
     }
-
-    let query = 'UPDATE usser SET nama = ?, email = ?, no_hp = ?';
-    const params = [nama, email, no_hp];
-
-    if (password_baru && password_baru.length >= 6) {
-        const hashed = await bcrypt.hash(password_baru, 10);
-        query += ', password = ?';
-        params.push(hashed);
-    }
-
-    query += ' WHERE id = ?';
-    params.push(session.userId);
-
-    await pool.query(query, params);
-
-    // Update session name
-    session.userName = nama;
-    await session.save();
-
-    return Response.json({ success: true });
 }
